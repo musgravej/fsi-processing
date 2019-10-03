@@ -95,7 +95,7 @@ def export_for_cass():
     conn = sqlite3.connect(database=g.database)
     cursor = conn.cursor()
 
-    sql = ("SELECT * FROM `records` WHERE `cass_processed` IS NULL;")
+    sql = "SELECT * FROM `records` WHERE `cass_processed` IS NULL;"
     cursor.execute(sql)
     results = cursor.fetchall()
 
