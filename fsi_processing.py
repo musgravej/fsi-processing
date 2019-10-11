@@ -3,14 +3,26 @@ import openpyxl
 import sqlite3
 import datetime
 import csv
+import configparser
 
 
 class Global:
     def __init__(self):
-        self.excel_import_path = ("\\\\jtsrv4\\data\\"
-                                  "Customer Files\\In Progress\\Media Logic"
-                                  "\\Return Processing\\LG 6_FSI\\")
-
+        self.in_service = ('MN_ANOKA', 'MN_ANOKA', 'MN_BLUE EARTH', 'MN_BROWN', 'MN_BLUE EARTH',
+                           'MN_BROWN', 'NE_BUTLER', 'MN_CARVER', 'MN_CHISAGO', 'MN_CARVER',
+                           'NE_CASS', 'MN_CHISAGO', 'MN_DAKOTA', 'MN_DODGE', 'MN_DAKOTA',
+                           'NE_DODGE', 'NE_DOUGLAS', 'MN_FARIBAULT', 'MN_FILLMORE', 'MN_FREEBORN',
+                           'MN_FARIBAULT', 'MN_FILLMORE', 'MN_FREEBORN', 'MN_HENNEPIN', 'MN_HOUSTON',
+                           'IA_HARRISON', 'MN_HENNEPIN', 'MN_HOUSTON', 'MN_ISANTI', 'MN_ISANTI', 'MN_KANDIYOHI',
+                           'MN_KANDIYOHI', 'NE_LANCASTER', 'MN_MARTIN', 'MN_MOWER', 'MN_MARTIN', 'IA_MILLS',
+                           'MN_MOWER', 'MN_NICOLLET', 'MN_NICOLLET', 'MN_OLMSTED', 'MN_OLMSTED', 'IA_POTTAWATTAMIE',
+                           'MN_RAMSEY', 'MN_RAMSEY', 'MN_SCOTT', 'MN_SHERBURNE', 'MN_STEARNS', 'MN_STEELE',
+                           'NE_SARPY', 'NE_SAUNDERS', 'MN_SCOTT', 'MN_SHERBURNE', 'MN_STEARNS',
+                           'MN_STEELE', 'MN_WABASHA', 'MN_WASECA', 'MN_WASHINGTON', 'MN_WATONWAN',
+                           'MN_WINONA', 'MN_WRIGHT', 'MN_WABASHA', 'MN_WASECA', 'NE_WASHINGTON',
+                           'MN_WATONWAN', 'MN_WINONA', 'MN_WRIGHT')
+        
+        self.excel_import_path = ""
         self.database = 'fsi_processing.db'
 
         self.to_cass_header = ['filename', 'source_recno', 'import_date', 'process_date',
@@ -24,6 +36,28 @@ class Global:
                                  'address_1', 'address_2', 'city', 'state',
                                  'zip', 'telephone', 'email', 'other', 'county',
                                  'cass_processed']
+
+        self.header_web_lead = ['line number', 'Transaction Type', 'Transaction Date', 'Person ID', 'Title',
+                                'Last Name', 'First Name', 'Middle Name', 'Suffix', 'Birth Date', 'Gender',
+                                'Address Line 1', 'Address Line 2', 'City', 'County', 'State Code', 'Zipcode',
+                                'Phone Number', 'Email Address', 'Response Type Code', 'Tracking Code',
+                                'Fulfillment Package Code', 'Call Permission', 'Email Permission']
+
+        self.header_outside_area = ['process_date', 'mid', 'first_name', 'last_name', 'address_1',
+                                    'address_2', 'city', 'state', 'zip', 'telephone', 'email',
+                                    'other', 'county', 'proc_notes']
+
+    def initialize_config(self):
+        config = configparser.ConfigParser()
+        config.read('config.ini')
+        self.excel_import_path = config['PATHS']['EXCEL_IMPORT_PATH']
+
+
+def dict_factory(cursor, row):
+    d = {}
+    for idx, col in enumerate(cursor.description):
+        d[col[0]] = row[idx]
+    return d
 
 
 def import_file(fle):
@@ -40,13 +74,13 @@ def import_file(fle):
 
         sql = ("INSERT INTO `records` VALUES ("
                "?,?,DATETIME('now', 'localtime'),?,?,?,?,?,?"
-               ",?,?,?,?,?,?,?,?,?,?,?,?,?,?);")
+               ",?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);")
 
         if n != 0:
             cursor.execute(sql, (fle, n, datetime.datetime.strftime(row_data[0], "%Y-%m-%d"), row_data[1], row_data[2],
                                  row_data[3], row_data[4], row_data[5], row_data[6], row_data[7], row_data[8],
                                  row_data[9], row_data[10], row_data[11], row_data[12], None, None,
-                                 None, None, None, None, None))
+                                 None, None, None, None, None, None))
             conn.commit()
 
     conn.close()
@@ -57,41 +91,74 @@ def init_db():
     if not os.path.exists(os.path.join(g.excel_import_path, 'cass_files')):
         os.mkdir(os.path.join(g.excel_import_path, 'cass_files'))
 
+    if not os.path.exists(os.path.join(g.excel_import_path, 'ftp_transfer')):
+        os.mkdir(os.path.join(g.excel_import_path, 'ftp_transfer'))
+        os.makedirs(os.path.join(g.excel_import_path, 'ftp_transfer', 'complete'))
+
     conn = sqlite3.connect(database=g.database)
     cursor = conn.cursor()
 
-    sql = ("CREATE table `records` ("
-           "`filename` VARCHAR(100) NULL DEFAULT NULL,"
-           "`recno` INT(10) NULL DEFAULT NULL,"
-           "`import_date` DATETIME NULL DEFAULT NULL,"
-           "`process_date` DATE NULL DEFAULT NULL,"
-           "`mid` VARCHAR(20) NULL DEFAULT NULL,"
-           "`first_name` VARCHAR(100) NULL DEFAULT NULL,"
-           "`middle_name` VARCHAR(100) NULL DEFAULT NULL,"
-           "`last_name` VARCHAR(100) NULL DEFAULT NULL, "
-           "`address_1` VARCHAR(100) NULL DEFAULT NULL, "
-           "`address_2` VARCHAR(100) NULL DEFAULT NULL, "
-           "`city` VARCHAR(100) NULL DEFAULT NULL, "
-           "`state` VARCHAR(100) NULL DEFAULT NULL, "
-           "`zip` VARCHAR(20) NULL DEFAULT NULL,"
-           "`telephone` VARCHAR(100) NULL DEFAULT NULL, "
-           "`email` VARCHAR(100) NULL DEFAULT NULL, "
-           "`other` VARCHAR(100) NULL DEFAULT NULL,"
-           "`county` VARCHAR(50) NULL DEFAULT NULL,"
-           "`cass_processed` DATE NULL DEFAULT NULL,"
-           "`cass_address_1` VARCHAR(100) NULL DEFAULT NULL, "
-           "`cass_address_2` VARCHAR(100) NULL DEFAULT NULL, "
-           "`cass_city` VARCHAR(100) NULL DEFAULT NULL, "
-           "`cass_state` VARCHAR(100) NULL DEFAULT NULL, "
-           "`cass_zip` VARCHAR(20) NULL DEFAULT NULL"
-           ");")
+    sql1 = ("CREATE table `records` ("
+            "`filename` VARCHAR(100) NULL DEFAULT NULL,"
+            "`recno` INT(10) NULL DEFAULT NULL,"
+            "`import_date` DATETIME NULL DEFAULT NULL,"
+            "`process_date` DATE NULL DEFAULT NULL,"
+            "`mid` VARCHAR(20) NULL DEFAULT NULL,"
+            "`first_name` VARCHAR(100) NULL DEFAULT NULL,"
+            "`middle_name` VARCHAR(100) NULL DEFAULT NULL,"
+            "`last_name` VARCHAR(100) NULL DEFAULT NULL, "
+            "`address_1` VARCHAR(100) NULL DEFAULT NULL, "
+            "`address_2` VARCHAR(100) NULL DEFAULT NULL, "
+            "`city` VARCHAR(100) NULL DEFAULT NULL, "
+            "`state` VARCHAR(100) NULL DEFAULT NULL, "
+            "`zip` VARCHAR(20) NULL DEFAULT NULL,"
+            "`telephone` VARCHAR(100) NULL DEFAULT NULL, "
+            "`email` VARCHAR(100) NULL DEFAULT NULL, "
+            "`other` VARCHAR(100) NULL DEFAULT NULL,"
+            "`county` VARCHAR(50) NULL DEFAULT NULL,"
+            "`cass_processed` DATE NULL DEFAULT NULL,"
+            "`cass_address_1` VARCHAR(100) NULL DEFAULT NULL, "
+            "`cass_address_2` VARCHAR(100) NULL DEFAULT NULL, "
+            "`cass_city` VARCHAR(100) NULL DEFAULT NULL, "
+            "`cass_state` VARCHAR(100) NULL DEFAULT NULL, "
+            "`cass_zip` VARCHAR(20) NULL DEFAULT NULL, "
+            "`proc_notes` VARCHAR(100) NULL DEFAULT NULL);")
+
+    sql2 = ("CREATE table `in_service` ("
+            "`state` VARCHAR(2) NULL DEFAULT NULL,"
+            "`county` VARCHAR(50) NULL DEFAULT NULL);")
 
     cursor.execute("DROP TABLE IF EXISTS `records`;")
+    cursor.execute("DROP TABLE IF EXISTS `in_service`;")
     cursor.execute("VACUUM;")
-    cursor.execute(sql)
+    cursor.execute(sql1)
+    cursor.execute(sql2)
 
     conn.commit()
 
+    for rec in g.in_service:
+        st, county = rec.split("_")[0], rec.split("_")[1]
+        cursor.execute("INSERT INTO `in_service` VALUES (?,?);", (st, county,))
+
+    conn.commit()
+    conn.close()
+
+
+def update_cass_results():
+    conn = sqlite3.connect(database=g.database)
+    cursor = conn.cursor()
+
+    sql1 = ("UPDATE `records` SET `proc_notes` = 'out of area' WHERE "
+            "UPPER(cass_state||county) NOT IN "
+            "(SELECT UPPER(b.state||b.county) FROM `in_service` b);")
+
+    sql2 = ("UPDATE `records` SET `proc_notes` = 'in area' WHERE "
+            "UPPER(cass_state||county) IN "
+            "(SELECT UPPER(b.state||b.county) FROM `in_service` b);")
+
+    cursor.execute(sql1)
+    cursor.execute(sql2)
+    conn.commit()
     conn.close()
 
 
@@ -121,6 +188,7 @@ def export_for_cass(fle):
 
 def import_from_cass(fle):
     file_path = os.path.join(g.excel_import_path, fle)
+    print(f"Updating table with {file_path}")
 
     conn = sqlite3.connect(database=g.database)
     cursor = conn.cursor()
@@ -166,18 +234,86 @@ def import_from_cass(fle):
     conn.close()
 
 
-def start_processing(process_file):
+def write_web_lead_file():
+    conn = sqlite3.connect(database=g.database)
+    conn.row_factory = dict_factory
+    cursor = conn.cursor()
 
+    sql1 = ("SELECT `process_date`, `mid`, `first_name`, `last_name`, `address_1`,"
+            "`address_2`, `city`, `state`, `zip`, `telephone`, `email`,"
+            "`other`, `county`, `proc_notes` FROM `records` WHERE `proc_notes` = 'out of area';")
+
+    cursor.execute(sql1)
+    out_of_area = cursor.fetchall()
+
+    sql2 = "SELECT * FROM `records` WHERE `proc_notes` = 'in area';"
+    cursor.execute(sql2)
+    in_area = cursor.fetchall()
+
+    dt = datetime.datetime.now()
+    trans_date = datetime.datetime.strftime(dt, "%m/%d/%Y %H:%M")
+    file_date = datetime.datetime.strftime(dt, "%Y%m%d%H%M%S")
+
+    outside_area_file = f"Outside Area_{file_date}.csv"
+    web_lead_file = f"medica_web_{file_date}.txt"
+
+    with open(os.path.join(g.excel_import_path, 'ftp_transfer', outside_area_file), 'w+', newline="") as s:
+        csvw = csv.DictWriter(s, g.header_outside_area, delimiter=",", quoting=csv.QUOTE_ALL)
+        csvw.writeheader()
+        for rec in out_of_area:
+            csvw.writerow(rec)
+
+    with open(os.path.join(g.excel_import_path, 'ftp_transfer', web_lead_file), 'w+', newline="") as s:
+        csvw = csv.DictWriter(s, g.header_web_lead, delimiter="|")
+        csvw.writeheader()
+        for rec in in_area:
+            phone = "".join(filter(lambda x: x.isdigit(), '' if rec['telephone'] is None else rec['telephone']))
+            print(phone, rec['telephone'], rec['email'])
+
+            w = {'line number': '1',
+                 'Transaction Type': 'C',
+                 'Transaction Date': trans_date,
+                 'Person ID': 'N/A',
+                 'Title': 'N/A',
+                 'Last Name': rec['last_name'],
+                 'First Name': rec['first_name'],
+                 'Middle Name': 'N/A',
+                 'Suffix': 'N/A',
+                 'Birth Date': 'N/A',
+                 'Gender': 'N/A',
+                 'Address Line 1': rec['cass_address_1'],
+                 'Address Line 2': rec['cass_address_2'],
+                 'City': rec['cass_city'],
+                 'County': rec['county'],
+                 'State Code': rec['cass_state'],
+                 'Zipcode': rec['cass_zip'],
+                 'Phone Number': phone,
+                 'Email Address': rec['email'],
+                 'Response Type Code': 'E',
+                 'Tracking Code': '',
+                 'Fulfillment Package Code': '',
+                 'Call Permission': '0' if phone == '' else '1',
+                 'Email Permission': '0' if rec['email'] is None else '1'
+                 }
+
+            csvw.writerow(w)
+
+    conn.close()
+
+
+def start_processing(process_file):
     # import_file(process_file)
     # export_for_cass(process_file)
-    import_from_cass('medica fsi brc data entry_20191003-cass.txt')
+    # import_from_cass('medica fsi brc data entry_20191003-cass.txt')
+    # update_cass_results()
+    write_web_lead_file()
 
 
 def main():
     global g
     g = Global()
+    g.initialize_config()
     # init_db()
-
     process_file = 'Medica FSI BRC Data Entry_20191003.xlsx'
     start_processing(process_file)
 
