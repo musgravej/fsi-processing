@@ -74,13 +74,13 @@ def import_file(fle):
 
         sql = ("INSERT INTO `records` VALUES ("
                "?,?,DATETIME('now', 'localtime'),?,?,?,?,?,?"
-               ",?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);")
+               ",?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);")
 
         if n != 0:
             cursor.execute(sql, (fle, n, datetime.datetime.strftime(row_data[0], "%Y-%m-%d"), row_data[1], row_data[2],
                                  row_data[3], row_data[4], row_data[5], row_data[6], row_data[7], row_data[8],
                                  row_data[9], row_data[10], row_data[11], row_data[12], None, None,
-                                 None, None, None, None, None, None))
+                                 None, None, None, None, None, None, None))
             conn.commit()
 
     conn.close()
@@ -122,7 +122,8 @@ def init_db():
             "`cass_city` VARCHAR(100) NULL DEFAULT NULL, "
             "`cass_state` VARCHAR(100) NULL DEFAULT NULL, "
             "`cass_zip` VARCHAR(20) NULL DEFAULT NULL, "
-            "`proc_notes` VARCHAR(100) NULL DEFAULT NULL);")
+            "`proc_notes` VARCHAR(100) NULL DEFAULT NULL,"
+            "`export_for_ftp` DATETIME NULL DEFAULT NULL);")
 
     sql2 = ("CREATE table `in_service` ("
             "`state` VARCHAR(2) NULL DEFAULT NULL,"
@@ -234,19 +235,20 @@ def import_from_cass(fle):
     conn.close()
 
 
-def write_web_lead_file():
+def write_web_lead_file(process_file):
     conn = sqlite3.connect(database=g.database)
     conn.row_factory = dict_factory
     cursor = conn.cursor()
 
     sql1 = ("SELECT `process_date`, `mid`, `first_name`, `last_name`, `address_1`,"
             "`address_2`, `city`, `state`, `zip`, `telephone`, `email`,"
-            "`other`, `county`, `proc_notes` FROM `records` WHERE `proc_notes` = 'out of area';")
+            "`other`, `county`, `proc_notes`, `filename`, `recno` FROM `records` "
+            "WHERE `proc_notes` = 'out of area' AND `export_for_ftp` IS NULL;")
 
     cursor.execute(sql1)
     out_of_area = cursor.fetchall()
 
-    sql2 = "SELECT * FROM `records` WHERE `proc_notes` = 'in area';"
+    sql2 = "SELECT * FROM `records` WHERE `proc_notes` = 'in area' AND `export_for_ftp` IS NULL;"
     cursor.execute(sql2)
     in_area = cursor.fetchall()
 
@@ -261,7 +263,27 @@ def write_web_lead_file():
         csvw = csv.DictWriter(s, g.header_outside_area, delimiter=",", quoting=csv.QUOTE_ALL)
         csvw.writeheader()
         for rec in out_of_area:
-            csvw.writerow(rec)
+
+            w = {'process_date': rec['process_date'],
+                 'mid': rec['mid'],
+                 'first_name': rec['first_name'],
+                 'last_name': rec['last_name'],
+                 'address_1': rec['address_1'],
+                 'address_2': rec['address_2'],
+                 'city': rec['city'],
+                 'state': rec['state'],
+                 'zip': rec['zip'],
+                 'telephone': rec['telephone'],
+                 'email': rec['email'],
+                 'other': rec['other'],
+                 'county': rec['county'],
+                 'proc_notes': rec['proc_notes']}
+
+            csvw.writerow(w)
+            sql = ("UPDATE `records` SET `export_for_ftp` = DATETIME('now', 'localtime') "
+                   "WHERE `filename` = ? AND `recno` = ?;")
+
+            cursor.execute(sql, (process_file, rec['recno'],))
 
     with open(os.path.join(g.excel_import_path, 'ftp_transfer', web_lead_file), 'w+', newline="") as s:
         csvw = csv.DictWriter(s, g.header_web_lead, delimiter="|")
@@ -297,6 +319,12 @@ def write_web_lead_file():
 
             csvw.writerow(w)
 
+            sql = ("UPDATE `records` SET `export_for_ftp` = DATETIME('now', 'localtime') "
+                   "WHERE `filename` = ? AND `recno` = ?;")
+
+            cursor.execute(sql, (process_file, rec['recno'],))
+
+    conn.commit()
     conn.close()
 
 
@@ -305,7 +333,7 @@ def start_processing(process_file):
     # export_for_cass(process_file)
     # import_from_cass('medica fsi brc data entry_20191003-cass.txt')
     # update_cass_results()
-    write_web_lead_file()
+    write_web_lead_file(process_file)
 
 
 def main():
