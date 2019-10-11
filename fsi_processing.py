@@ -268,7 +268,6 @@ def write_web_lead_file():
         csvw.writeheader()
         for rec in in_area:
             phone = "".join(filter(lambda x: x.isdigit(), '' if rec['telephone'] is None else rec['telephone']))
-            print(phone, rec['telephone'], rec['email'])
 
             w = {'line number': '1',
                  'Transaction Type': 'C',
