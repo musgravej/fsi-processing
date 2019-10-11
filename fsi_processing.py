@@ -240,9 +240,9 @@ def write_web_lead_file(process_file):
     conn.row_factory = dict_factory
     cursor = conn.cursor()
 
-    sql1 = ("SELECT `process_date`, `mid`, `first_name`, `last_name`, `address_1`,"
-            "`address_2`, `city`, `state`, `zip`, `telephone`, `email`,"
-            "`other`, `county`, `proc_notes`, `filename`, `recno` FROM `records` "
+    sql1 = ("SELECT `process_date`, `mid`, TRIM(`first_name`), TRIM(`last_name`), TRIM(`address_1`),"
+            "TRIM(`address_2`), TRIM(`city`), `state`, `zip`, `telephone`, TRIM(`email`),"
+            "`other`, `county`, TRIM(`proc_notes`), `filename`, `recno` FROM `records` "
             "WHERE `proc_notes` = 'out of area' AND `export_for_ftp` IS NULL;")
 
     cursor.execute(sql1)
@@ -296,8 +296,8 @@ def write_web_lead_file(process_file):
                  'Transaction Date': trans_date,
                  'Person ID': 'N/A',
                  'Title': 'N/A',
-                 'Last Name': rec['last_name'],
-                 'First Name': rec['first_name'],
+                 'Last Name': str(rec['last_name']).strip(),
+                 'First Name': str(rec['first_name']).strip(),
                  'Middle Name': 'N/A',
                  'Suffix': 'N/A',
                  'Birth Date': 'N/A',
