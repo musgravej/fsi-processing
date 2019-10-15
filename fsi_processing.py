@@ -21,6 +21,27 @@ class Global:
                            'MN_STEELE', 'MN_WABASHA', 'MN_WASECA', 'MN_WASHINGTON', 'MN_WATONWAN',
                            'MN_WINONA', 'MN_WRIGHT', 'MN_WABASHA', 'MN_WASECA', 'NE_WASHINGTON',
                            'MN_WATONWAN', 'MN_WINONA', 'MN_WRIGHT')
+
+        self.tracking_codes = {'ML6': '2020 ML Guide', 'FSI20 ML2': '2020 ML Guide',
+                               'FSI20 ML7': '2020 ML Guide', 'FSI20 ML5': '2020 ML Guide',
+                               'FSI20 ML3': '2010 Adv Sol CHI', 'FSI20 ML4': '2010 Adv Sol CHI'}
+
+        self.mn_counties = {'ANOKA': 'TC-TCM', 'CARVER': 'TC-TCM', 'DAKOTA': 'TC-TCM', 'HENNEPIN': 'TC-TCM',
+                            'RAMSEY': 'TC-TCM', 'SCOTT': 'TC-TCM', 'WASHINGTON': 'TC-TCM',
+                            'CHISAGO': 'TC-GTCM', 'ISANTI': 'TC-GTCM', 'STEARNS': 'TC-GTCM',
+                            'KANDIYOHI': 'TC-GTCM', 'WRIGHT': 'TC-GTCM', 'SHERBURNE': 'TC-GTCM',
+                            'BLUE EARTH': 'TC-SEMN', 'BROWN': 'TC-SEMN', 'DODGE': 'TC-SEMN',
+                            'FARIBAULT': 'TC-SEMN', 'FILLMORE': 'TC-SEMN', 'FREEBORN': 'TC-SEMN',
+                            'HOUSTON': 'TC-SEMN', 'MARTIN': 'TC-SEMN', 'MOWER': 'TC-SEMN',
+                            'NICOLLET': 'TC-SEMN', 'OLMSTED': 'TC-SEMN', 'STEELE': 'TC-SEMN',
+                            'WABASHA': 'TC-SEMN', 'WASECA': 'TC-SEMN', 'WATONWAN': 'TC-SEMN',
+                            'WINONA': 'TC-SEMN'}
+
+        self.merge_letter_header = ['Campaign', 'Individual_First_Name_1', 'Individual_Last_Name_1',
+                                    'Individual_First_Name_2', 'Individual_Last_Name_2', 'Address_1',
+                                    'Address_2', 'City', 'State', 'Zip', 'County', 'Unique_ID',
+                                    'mid', 'art_code', 'kit'
+                                    ]
         
         self.excel_import_path = ""
         self.database = 'fsi_processing.db'
@@ -74,13 +95,13 @@ def import_file(fle):
 
         sql = ("INSERT INTO `records` VALUES ("
                "?,?,DATETIME('now', 'localtime'),?,?,?,?,?,?"
-               ",?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);")
+               ",?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);")
 
         if n != 0:
             cursor.execute(sql, (fle, n, datetime.datetime.strftime(row_data[0], "%Y-%m-%d"), row_data[1], row_data[2],
                                  row_data[3], row_data[4], row_data[5], row_data[6], row_data[7], row_data[8],
                                  row_data[9], row_data[10], row_data[11], row_data[12], None, None,
-                                 None, None, None, None, None, None, None))
+                                 None, None, None, None, None, None, None, None))
             conn.commit()
 
     conn.close()
@@ -123,6 +144,7 @@ def init_db():
             "`cass_state` VARCHAR(100) NULL DEFAULT NULL, "
             "`cass_zip` VARCHAR(20) NULL DEFAULT NULL, "
             "`proc_notes` VARCHAR(100) NULL DEFAULT NULL,"
+            "`kit_code` VARCHAR(25) NULL DEFAULT NULL,"
             "`export_for_ftp` DATETIME NULL DEFAULT NULL);")
 
     sql2 = ("CREATE table `in_service` ("
@@ -151,14 +173,42 @@ def update_cass_results():
 
     sql1 = ("UPDATE `records` SET `proc_notes` = 'out of area' WHERE "
             "UPPER(cass_state||county) NOT IN "
-            "(SELECT UPPER(b.state||b.county) FROM `in_service` b);")
+            "(SELECT UPPER(b.state||b.county) FROM `in_service` b) "
+            "AND `export_for_ftp` IS NULL;")
 
     sql2 = ("UPDATE `records` SET `proc_notes` = 'in area' WHERE "
             "UPPER(cass_state||county) IN "
-            "(SELECT UPPER(b.state||b.county) FROM `in_service` b);")
+            "(SELECT UPPER(b.state||b.county) FROM `in_service` b) "
+            "AND `export_for_ftp` IS NULL;")
 
     cursor.execute(sql1)
     cursor.execute(sql2)
+    conn.commit()
+    conn.close()
+
+
+def update_kit_code():
+    conn = sqlite3.connect(database=g.database)
+    cursor = conn.cursor()
+
+    sql1 = "SELECT * FROM `records` WHERE `proc_notes` = 'in area' AND `export_for_ftp` is NULL;"
+    cursor.execute(sql1)
+    results = cursor.fetchall()
+
+    for line in results:
+        rec_state = line[21]
+
+        if rec_state == 'IA' or rec_state == 'NE':
+            sql1 = ("UPDATE `records` SET `kit_code` = 'OMA' WHERE "
+                    "UPPER(filename||recno) = UPPER(?||?);")
+            cursor.execute(sql1, (line[0], line[1],))
+
+        if rec_state == 'MN':
+            kit_code = g.mn_counties[str(line[16]).upper()]
+            sql1 = ("UPDATE `records` SET `kit_code` = ? WHERE "
+                    "UPPER(filename||recno) = UPPER(?||?);")
+            cursor.execute(sql1, (kit_code, line[0], line[1],))
+
     conn.commit()
     conn.close()
 
@@ -240,9 +290,10 @@ def write_web_lead_file(process_file):
     conn.row_factory = dict_factory
     cursor = conn.cursor()
 
-    sql1 = ("SELECT `process_date`, `mid`, TRIM(`first_name`), TRIM(`last_name`), TRIM(`address_1`),"
-            "TRIM(`address_2`), TRIM(`city`), `state`, `zip`, `telephone`, TRIM(`email`),"
-            "`other`, `county`, TRIM(`proc_notes`), `filename`, `recno` FROM `records` "
+    sql1 = ("SELECT `process_date`, `mid`, TRIM(`first_name`) 'first_name', TRIM(`last_name`) 'last_name', "
+            "TRIM(`address_1`) 'address_1', TRIM(`address_2`) 'address_2', TRIM(`city`) 'city', "
+            "`state`, `zip`, `telephone`, TRIM(`email`) 'email',"
+            "`other`, `county`, TRIM(`proc_notes`) 'proc_notes', `filename`, `recno` FROM `records` "
             "WHERE `proc_notes` = 'out of area' AND `export_for_ftp` IS NULL;")
 
     cursor.execute(sql1)
@@ -258,6 +309,7 @@ def write_web_lead_file(process_file):
 
     outside_area_file = f"Outside Area_{file_date}.csv"
     web_lead_file = f"medica_web_{file_date}.txt"
+    letter_merge_file = f"fsi_letter_merge_{file_date}.txt"
 
     with open(os.path.join(g.excel_import_path, 'ftp_transfer', outside_area_file), 'w+', newline="") as s:
         csvw = csv.DictWriter(s, g.header_outside_area, delimiter=",", quoting=csv.QUOTE_ALL)
@@ -285,23 +337,46 @@ def write_web_lead_file(process_file):
 
             cursor.execute(sql, (process_file, rec['recno'],))
 
+    with open(os.path.join(g.excel_import_path, 'ftp_transfer', letter_merge_file), 'w+', newline="") as s:
+        csvw = csv.DictWriter(s, g.merge_letter_header, delimiter="\t")
+        csvw.writeheader()
+        for rec in in_area:
+            w = {'Campaign': rec['mid'],
+                 'Individual_First_Name_1': str(rec['first_name']).strip(),
+                 'Individual_Last_Name_1': str(rec['last_name']).strip(),
+                 'Individual_First_Name_2': '',
+                 'Individual_Last_Name_2': '',
+                 'Address_1': rec['cass_address_1'],
+                 'Address_2': rec['cass_address_2'],
+                 'City': rec['cass_city'],
+                 'State': rec['cass_state'],
+                 'Zip': rec['cass_zip'],
+                 'County': rec['county'],
+                 'Unique_ID': '',
+                 'mid': rec['mid'],
+                 'art_code': '',
+                 'kit': rec['kit_code']}
+
+            csvw.writerow(w)
+
     with open(os.path.join(g.excel_import_path, 'ftp_transfer', web_lead_file), 'w+', newline="") as s:
         csvw = csv.DictWriter(s, g.header_web_lead, delimiter="|")
         csvw.writeheader()
         for rec in in_area:
             phone = "".join(filter(lambda x: x.isdigit(), '' if rec['telephone'] is None else rec['telephone']))
+            package_code = g.tracking_codes[rec['mid']]
 
             w = {'line number': '1',
                  'Transaction Type': 'C',
                  'Transaction Date': trans_date,
-                 'Person ID': 'N/A',
-                 'Title': 'N/A',
+                 'Person ID': '',
+                 'Title': '',
                  'Last Name': str(rec['last_name']).strip(),
                  'First Name': str(rec['first_name']).strip(),
-                 'Middle Name': 'N/A',
-                 'Suffix': 'N/A',
-                 'Birth Date': 'N/A',
-                 'Gender': 'N/A',
+                 'Middle Name': '',
+                 'Suffix': '',
+                 'Birth Date': '',
+                 'Gender': '',
                  'Address Line 1': rec['cass_address_1'],
                  'Address Line 2': rec['cass_address_2'],
                  'City': rec['cass_city'],
@@ -311,8 +386,8 @@ def write_web_lead_file(process_file):
                  'Phone Number': phone,
                  'Email Address': rec['email'],
                  'Response Type Code': 'E',
-                 'Tracking Code': '',
-                 'Fulfillment Package Code': '',
+                 'Tracking Code': rec['mid'],
+                 'Fulfillment Package Code': package_code,
                  'Call Permission': '0' if phone == '' else '1',
                  'Email Permission': '0' if rec['email'] is None else '1'
                  }
@@ -328,11 +403,15 @@ def write_web_lead_file(process_file):
     conn.close()
 
 
-def start_processing(process_file):
-    # import_file(process_file)
-    # export_for_cass(process_file)
+def pre_cass_processing(process_file):
+    import_file(process_file)
+    export_for_cass(process_file)
+
+
+def post_cass_processing(process_file):
     # import_from_cass('medica fsi brc data entry_20191003-cass.txt')
     # update_cass_results()
+    update_kit_code()
     write_web_lead_file(process_file)
 
 
@@ -341,8 +420,11 @@ def main():
     g = Global()
     g.initialize_config()
     # init_db()
-    process_file = 'Medica FSI BRC Data Entry_20191003.xlsx'
-    start_processing(process_file)
+
+    process_file = 'Medica FSI BRC Data Entry - Preheat_20191015.xlsx'
+    # process_file = 'Medica FSI BRC Data Entry - FSI 1_20191015.xlsx'
+    pre_cass_processing(process_file)
+    # post_cass_processing(process_file)
 
 
 if __name__ == '__main__':
