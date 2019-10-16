@@ -382,7 +382,7 @@ def write_web_lead_file(process_file):
                  'City': rec['cass_city'],
                  'County': rec['county'],
                  'State Code': rec['cass_state'],
-                 'Zipcode': rec['cass_zip'],
+                 'Zipcode': rec['cass_zip'][0:5],
                  'Phone Number': phone,
                  'Email Address': rec['email'],
                  'Response Type Code': 'E',
