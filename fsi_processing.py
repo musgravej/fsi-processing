@@ -5,6 +5,8 @@ import datetime
 import csv
 import configparser
 
+# TODO export letter merge by version order
+
 
 class Global:
     def __init__(self):
