@@ -5,8 +5,6 @@ import datetime
 import csv
 import configparser
 
-# TODO export letter merge by version order
-
 
 class Global:
     def __init__(self):
@@ -25,8 +23,12 @@ class Global:
                            'MN_WATONWAN', 'MN_WINONA', 'MN_WRIGHT')
 
         self.tracking_codes = {'ML6': '2020 ML Guide', 'FSI20 ML2': '2020 ML Guide',
-                               'FSI20 ML7': '2020 ML Guide', 'FSI20 ML5': '2020 ML Guide',
-                               'FSI20 ML3': '2010 Adv Sol CHI', 'FSI20 ML4': '2010 Adv Sol CHI'}
+                               'FSI20 ML7': '2020 Adv Sol MN', 'FSI20 ML5': '2020 ML Guide',
+                               'FSI20 ML3': '2020 Adv Sol CHI', 'FSI20 ML4': '2020 Adv Sol CHI'}
+
+        self.transaction_types = {'ML6': 'C', 'FSI20 ML2': 'C',
+                                  'FSI20 ML7': 'AD', 'FSI20 ML5': 'C',
+                                  'FSI20 ML3': 'AD', 'FSI20 ML4': 'AD'}
 
         self.mn_counties = {'ANOKA': 'TC-TCM', 'CARVER': 'TC-TCM', 'DAKOTA': 'TC-TCM', 'HENNEPIN': 'TC-TCM',
                             'RAMSEY': 'TC-TCM', 'SCOTT': 'TC-TCM', 'WASHINGTON': 'TC-TCM',
@@ -216,6 +218,7 @@ def update_kit_code():
 
 
 def export_for_cass(fle):
+    print("Exporting for cass")
     conn = sqlite3.connect(database=g.database)
     cursor = conn.cursor()
 
@@ -237,6 +240,7 @@ def export_for_cass(fle):
                            rec[7], rec[8], rec[9], rec[10], rec[11], rec[12], rec[13], rec[14],
                            rec[15], rec[16], rec[17]])
     conn.close()
+    print("File written to:", os.path.join(g.excel_import_path, 'cass_files', cass_file_name))
 
 
 def import_from_cass(fle):
@@ -301,7 +305,8 @@ def write_web_lead_file(process_file):
     cursor.execute(sql1)
     out_of_area = cursor.fetchall()
 
-    sql2 = "SELECT * FROM `records` WHERE `proc_notes` = 'in area' AND `export_for_ftp` IS NULL;"
+    sql2 = ("SELECT * FROM `records` WHERE `proc_notes` = 'in area' "
+            "AND `export_for_ftp` IS NULL ORDER BY `state`, `county`;")
     cursor.execute(sql2)
     in_area = cursor.fetchall()
 
@@ -339,6 +344,8 @@ def write_web_lead_file(process_file):
 
             cursor.execute(sql, (process_file, rec['recno'],))
 
+    print("Outside area file written to:", os.path.join(g.excel_import_path, 'ftp_transfer', outside_area_file))
+
     with open(os.path.join(g.excel_import_path, 'ftp_transfer', letter_merge_file), 'w+', newline="") as s:
         csvw = csv.DictWriter(s, g.merge_letter_header, delimiter="\t")
         csvw.writeheader()
@@ -361,15 +368,18 @@ def write_web_lead_file(process_file):
 
             csvw.writerow(w)
 
+    print("Letter merge file written to:", os.path.join(g.excel_import_path, 'ftp_transfer', letter_merge_file))
+
     with open(os.path.join(g.excel_import_path, 'ftp_transfer', web_lead_file), 'w+', newline="") as s:
         csvw = csv.DictWriter(s, g.header_web_lead, delimiter="|")
         csvw.writeheader()
         for rec in in_area:
             phone = "".join(filter(lambda x: x.isdigit(), '' if rec['telephone'] is None else rec['telephone']))
             package_code = g.tracking_codes[rec['mid']]
+            transaction_type = g.transaction_types[rec['mid']]
 
             w = {'line number': '1',
-                 'Transaction Type': 'C',
+                 'Transaction Type': transaction_type,
                  'Transaction Date': trans_date,
                  'Person ID': '',
                  'Title': '',
@@ -401,6 +411,8 @@ def write_web_lead_file(process_file):
 
             cursor.execute(sql, (process_file, rec['recno'],))
 
+    print("Web lead file written to:", os.path.join(g.excel_import_path, 'ftp_transfer', web_lead_file))
+
     conn.commit()
     conn.close()
 
@@ -410,9 +422,9 @@ def pre_cass_processing(process_file):
     export_for_cass(process_file)
 
 
-def post_cass_processing(process_file):
-    # import_from_cass('medica fsi brc data entry_20191003-cass.txt')
-    # update_cass_results()
+def post_cass_processing(process_file, cass_file):
+    import_from_cass(cass_file)
+    update_cass_results()
     update_kit_code()
     write_web_lead_file(process_file)
 
@@ -423,10 +435,10 @@ def main():
     g.initialize_config()
     # init_db()
 
-    process_file = 'Medica FSI BRC Data Entry - Preheat_20191015.xlsx'
-    # process_file = 'Medica FSI BRC Data Entry - FSI 1_20191015.xlsx'
-    pre_cass_processing(process_file)
-    # post_cass_processing(process_file)
+    process_file = 'Medica FSI BRC Data Entry_20191017.xlsx'
+    cass_file = 'medica fsi brc data entry_20191017_cass.txt'
+    # pre_cass_processing(process_file)
+    post_cass_processing(process_file, cass_file)
 
 
 if __name__ == '__main__':
