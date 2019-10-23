@@ -93,6 +93,10 @@ def import_file(fle):
     conn = sqlite3.connect(database=g.database)
     cursor = conn.cursor()
 
+    cursor.execute("DELETE FROM `records` WHERE `filename` = ?;", (fle,))
+    conn.commit()
+    cursor.execute("VACUUM;")
+
     for n, row in enumerate(ws.iter_rows()):
 
         row_data = [cell.value for cell in row]
@@ -435,10 +439,10 @@ def main():
     g.initialize_config()
     # init_db()
 
-    process_file = 'Medica FSI BRC Data Entry_20191017.xlsx'
-    cass_file = 'medica fsi brc data entry_20191017_cass.txt'
-    # pre_cass_processing(process_file)
-    post_cass_processing(process_file, cass_file)
+    process_file = 'Medica FSI BRC Data Entry_20191023.xlsx'
+    cass_file = 'medica fsi brc data entry_20191023-cass.txt'
+    pre_cass_processing(process_file)
+    # post_cass_processing(process_file, cass_file)
 
 
 if __name__ == '__main__':
